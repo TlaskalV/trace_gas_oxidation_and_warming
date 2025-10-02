@@ -1,0 +1,374 @@
+---
+title: "trace gas oxidation genes in metagenome assembly"
+author: "Vojtech Tlaskal"
+date: today
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    latex-engine: xelatex      
+    geometry: margin=1in
+---
+
+# Data Processing Pipeline
+
+This report combines R and bash commands to process and analyze assembled and gene-called metagenomic data from subarctic grassland soil in order to identify target trace gas oxidation genes and their taxonomy.
+
+```{r setup}
+# Load required libraries
+library(tidyverse)
+library(tidylog)
+library(readr)
+library(readxl)
+library(openxlsx2)
+
+# Set global options
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+## Raw FASTQ QC
+```{bash}
+# Trimmomatic
+for Sample in *_R1.fastq
+do
+    base=$(basename ${Sample} _R1.fastq)
+    trimmomatic PE -threads 20 -trimlog trimLogFile -summary statsSummaryFile \
+    ${Sample} ${base}_R2.fastq \
+    ${base}_R1.trim.fastq ${base}_R1un.trim.fastq \
+    ${base}_R2.trim.fastq ${base}_R2un.trim.fastq \
+    ILLUMINACLIP:TruSeq3-PE-2.fa:2:30:10:2:True LEADING:3 TRAILING:3 MINLEN:36
+done
+
+# Fastp, loop over all pairs of input fastq files in the directory
+for R1_file in ${fastq_dir}/*_R1.fastq
+do
+    R2_file=${R1_file%_R1.fastq}_R2.fastq
+    base=$(basename ${R1_file} _R1.fastq)
+
+    # Run fastp on the pair of files
+    fastp --in1 ${R1_file} \
+          --in2 ${R2_file} \
+          --out1 ${output_dir}/${base}.trim_R1.fastq \
+          --out2 ${output_dir}/${base}.trim_R2.fastq \
+          --qualified_quality_phred 4 \
+          --length_required 31 \
+          --correction \
+          --json ${output_dir}/${base}.trim.json \
+          --html ${output_dir}/${base}.trim.html
+done
+```
+
+## Metagenome assembly, genecalling and annotation 
+
+```{bash}
+# MEGAHIT assembly
+# Run assembly commands for each sample
+cd A1 && megahit -1 Ambient1_S1_L001_R1.trim.fastq -2 Ambient1_S1_L001_R2.trim.fastq -o ASSEMBLY -t 12 && cd ..
+cd A2 && megahit -1 Ambient2_S2_L001_R1.trim.fastq -2 Ambient2_S2_L001_R2.trim.fastq -o ASSEMBLY -t 12 && cd ..
+cd A4 && megahit -1 Ambient4_S3_L001_R1.trim.fastq -2 Ambient4_S3_L001_R2.trim.fastq -o ASSEMBLY -t 12 && cd ..
+cd A5 && megahit -1 Ambient5_S4_L001_R1.trim.fastq -2 Ambient5_S4_L001_R2.trim.fastq -o ASSEMBLY -t 12 && cd ..
+cd W1 && megahit -1 Warm1_S6_L001_R1.trim.fastq -2 Warm1_S6_L001_R2.trim.fastq -o ASSEMBLY -t 12 && cd ..
+cd W2 && megahit -1 Warm2_S7_L001_R1.trim.fastq -2 Warm2_S7_L001_R2.trim.fastq -o ASSEMBLY -t 12 && cd ..
+cd W4 && megahit -1 Warm4_S8_L001_R1.trim.fastq -2 Warm4_S8_L001_R2.trim.fastq -o ASSEMBLY -t 12 && cd ..
+cd W5 && megahit -1 Warm5_S9_L001_R1.trim.fastq -2 Warm5_S9_L001_R2.trim.fastq -o ASSEMBLY -t 12
+
+# Gene prediction using Prodigal
+# Define an array of sample names
+samples=("A1" "A2" "A4" "A5" "W1" "W2" "W4" "W5")
+mkdir -p All_Iceland_proteins
+
+# Loop through each sample and run Prodigal
+for sample in "${samples[@]}"
+do
+    # Set input file path and output directory
+    input_file="${sample}/ASSEMBLY/final.contigs.fa"
+    output_dir="All_Iceland_proteins"
+    output_file="${sample}.proteins.faa"
+
+    # Run Prodigal for gene prediction
+    prodigal -i "${input_file}" -o "${output_dir}/${sample}" -a "${output_dir}/${output_file}" -p meta
+done
+
+# Diamond annotation
+# Download necessary files for taxonomic mapping
+# --taxonmap: File for mapping accession numbers to taxids
+# --taxonnodes, --taxonnames: Taxonomic nodes and names
+# Funcgenes_51_Sep2023 from Greening lab metabolic marker gene databases via 
+# Leung, Pok Man; Greening, Chris (2020). Greening lab metabolic marker gene databases. Monash University. Collection. https://doi.org/10.26180/c.5230745
+
+# Process all downloaded gzipped files to create DIAMOND database
+for file in *.gz; do
+    diamond makedb --in $file --db ../Diamond_database/Funcgenes_51_Sep2023 \
+    --taxonmap ../prot.accession2taxid.FULL.gz \
+    --taxonnodes ../taxdmp/nodes.dmp \
+    --taxonnames ../taxdmp/names.dmp \
+    --threads 5
+done
+
+# Create output directory for annotations
+mkdir -p MAG_Contig_Annotation
+cd All_Iceland_proteins
+
+# Set DIAMOND database path
+database_path="Funcgenes_51_Sep2023.dmnd"
+
+# Loop through all .faa files and run DIAMOND blastp
+for input_file in *.faa; do
+    # Define output file path
+    output_file="../MAG_Contig_Annotation/${input_file%.faa}_Annotation_file.txt"
+    
+    # Run DIAMOND blastp
+    diamond blastp -p 10 -d "$database_path" -q "$input_file" -o "$output_file" \
+    -k 1 --outfmt 6 qseqid sseqid pident length mismatch gapopen qstart qend \
+    sstart send evalue bitscore qcovhsp salltitles staxids
+done
+
+```
+
+## Data Preparation
+
+```{r data_processing}
+# Extract gene-called sequences
+# Define a function to read, add columns, and process data
+read_add_and_process_data <- function(filename) {
+  data <- read_tsv(filename, 
+                   col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", 
+                                 "qend", "sstart", "send", "evalue", "bitscore", 
+                                 "qcovhsp", "salltitles"))
+  
+  # Add Gene and AccessionNumber columns by splitting sseqid
+  data <- data %>%
+    separate(sseqid, into = c("Gene", "AccessionNumber"), sep = "-", remove = FALSE) %>%
+    filter(!grepl("^[A-Za-z]+$", AccessionNumber))
+  
+  data <- data %>%
+    filter(pident > 75 & qcovhsp > 70) %>%
+    distinct(qseqid, .keep_all = TRUE) %>%
+    glimpse()
+  
+  return(data)
+}
+
+# Read, add columns, and process data for each dataset
+A1 <- read_add_and_process_data("A1.proteins_Annotation_file.txt.gz")
+A2 <- read_add_and_process_data("A2.proteins_Annotation_file.txt.gz")
+A4 <- read_add_and_process_data("A4.proteins_Annotation_file.txt.gz")
+A5 <- read_add_and_process_data("A5.proteins_Annotation_file.txt.gz")
+W1 <- read_add_and_process_data("W1.proteins_Annotation_file.txt.gz")
+W2 <- read_add_and_process_data("W2.proteins_Annotation_file.txt.gz")
+W4 <- read_add_and_process_data("W4.proteins_Annotation_file.txt.gz")
+W5 <- read_add_and_process_data("W5.proteins_Annotation_file.txt.gz")
+# Read, add columns, and process data for each public metagenomes
+A6 <- read_add_and_process_data("SRR15130125_final.contigs.proteins_Annotation_file.txt.gz")
+W6 <- read_add_and_process_data("SRR15130128_final.contigs.proteins_Annotation_file.txt.gz")
+
+# Add a sample column 
+A1$Sample <- "Ambient1"
+A2$Sample <- "Ambient2"
+A4$Sample <- "Ambient4"
+A5$Sample <- "Ambient5"
+W1$Sample <- "Warm1"
+W2$Sample <- "Warm2"
+W4$Sample <- "Warm4"
+W5$Sample <- "Warm5"
+
+# Combine the data frames into a single data frame
+combined_data <- rbind(A1, A2, A4, A5, W1, W2, W4, W5)
+
+# load target annotations
+diamond_annotations <- read_csv("distinct_full_taxonomy_helper.csv", 
+    trim_ws = FALSE) %>% 
+  janitor::clean_names() %>% 
+  glimpse()
+
+test_duplicates <- distinct(combined_data, qseqid)
+
+# combine with targets
+genes_list <- combined_data %>% 
+  janitor::clean_names() %>% 
+  inner_join(diamond_annotations, "gene") %>% 
+  glimpse
+
+distinct <- distinct(genes_list, qseqid)
+distinct_full <- distinct(genes_list, qseqid, .keep_all = T) |> 
+  glimpse()
+
+#write_xlsx(distinct, "gene_list.xlsx")
+#write_xlsx(distinct_full, "genes_list_full.xlsx")
+
+# Get list of genes in fasta
+grouped_data <- distinct_full %>% 
+  select(sample, qseqid) |> 
+  group_by(sample)
+
+# Split the data into a list of tibbles
+grouped_tibbles <- group_split(grouped_data)
+
+# Iterate over the list and write each tibble to a separate text file
+for (i in seq_along(grouped_tibbles)) {
+  # Extract the group name from the first row of the tibble
+  group_name <- grouped_tibbles[[i]]$sample[1]
+  
+  # Write the tibble to a text file, including the group name in the filename
+  write.table(grouped_tibbles[[i]], paste0("group_", group_name, ".txt"), sep = "\t", row.names = FALSE, quote = F)
+}
+```
+
+## Fasta file management
+
+Bash commands to filter fasta files:
+
+```{bash}
+# filter target genes for CO/CO2/H2
+for file in group*.txt
+do
+sample=${file%%.txt}
+awk 'NR>1 {print $2}' ${file} > ${sample}_edit.txt
+done
+
+# seqkit to filter sequences from fasta gene-calls based on list of target genes
+seqkit grep -n -f group_Ambient1_edit.txt A1_trimmed.fas > A1_trace_genes.fas 
+seqkit grep -n -f group_Ambient2_edit.txt A2_trimmed.fas > A2_trace_genes.fas
+seqkit grep -n -f group_Ambient4_edit.txt A4_trimmed.fas > A4_trace_genes.fas
+seqkit grep -n -f group_Ambient5_edit.txt A5_trimmed.fas > A5_trace_genes.fas
+
+seqkit grep -n -f group_Warm1_edit.txt W1_trimmed.fas > W1_trace_genes.fas
+seqkit grep -n -f group_Warm2_edit.txt W2_trimmed.fas > W2_trace_genes.fas
+seqkit grep -n -f group_Warm4_edit.txt W4_trimmed.fas > W4_trace_genes.fas
+seqkit grep -n -f group_Warm5_edit.txt W5_trimmed.fas > W5_trace_genes.fas
+
+# append name
+for file in *_trace_genes.fas
+do
+   sample=${file%%_trace_genes.fas}
+awk -v fname="$sample" '/^>/ {$0=$0 "|" fname}1' ${file} > ${sample}_trace_genes_renamed.fas
+done
+
+# merge all trace gas oxidation genes
+cat *_trace_genes_renamed.fas > all_trace_genes_renamed.fas
+# translate trace gas oxidation genes
+seqkit translate all_trace_genes_renamed.fas --trim -T 11 > all_trace_genes_renamed.faa
+```
+
+## Download and process RefSeq bacterial genomes
+
+```{bash}
+# RefSeq bacteria download using datasets package
+datasets download genome taxon bacteria --assembly-source RefSeq --dehydrated --include protein
+unzip ncbi_dataset.zip -d refseq_bacteria
+datasets rehydrate --directory refseq_bacteria
+
+# rename files
+for file in */*.faa; do
+ mv -- "$file" "${file%/*.faa}/${file%/*.faa}"
+done
+
+# copy all to single directory
+mkdir all
+for file in */*; do
+   cp -n "$file" all/
+done
+
+# insert filename to sequence header separated by |
+for file in *.1; do
+ awk -v file="${file%.*}" 'BEGIN{FS=OFS="|"} /^>/{$0=">"file"|"substr($0,2)} 1' "$file" > "${file%.*}"_modified.faa
+done
+for file in *.2; do
+ awk -v file="${file%.*}" 'BEGIN{FS=OFS="|"} /^>/{$0=">"file"|"substr($0,2)} 1' "$file" > "${file%.*}"_modified.faa
+done
+for file in *.3; do
+ awk -v file="${file%.*}" 'BEGIN{FS=OFS="|"} /^>/{$0=">"file"|"substr($0,2)} 1' "$file" > "${file%.*}"_modified.faa
+done
+for file in *.4; do
+ awk -v file="${file%.*}" 'BEGIN{FS=OFS="|"} /^>/{$0=">"file"|"substr($0,2)} 1' "$file" > "${file%.*}"_modified.faa
+done
+for file in *.5; do
+ awk -v file="${file%.*}" 'BEGIN{FS=OFS="|"} /^>/{$0=">"file"|"substr($0,2)} 1' "$file" > "${file%.*}"_modified.faa
+done
+# cat for this number of args
+find . -maxdepth 1 -type f -name '*_modified.faa' -print0 |
+  sort -z |
+  xargs -0 cat -- >> merged_bacteria.faa
+# gives 324508 accessions, all merged to one file
+```
+
+## Diamond against RefSeq to infer taxonomy of target genes
+
+```{bash}
+# creating a diamond-formatted database file
+diamond makedb --in merged_bacteria.faa -d merged_bacteria
+# running a search in blastp mode
+diamond blastp -d merged_bacteria.dmnd -q all_trace_genes_renamed.faa --threads 50 --outfmt 6 -v -o all_trace_genes_renamed_diamond.tsv
+```
+
+## Process taxonomy
+
+```{r taxonomy}
+# prepare taxonomy
+refseq_tax <- read_delim("ar53_taxonomy_r214.tsv", # official RefSeq archaeal taxonomy
+                         delim = "\t", escape_double = FALSE, 
+                         col_names = FALSE) %>%
+  add_row(read_delim("bac120_taxonomy_r214.tsv", # official RefSeq bacterial taxonomy
+                     delim = "\t", escape_double = FALSE, 
+                     col_names = FALSE)) %>% 
+  mutate(accession_helper = str_remove(X1, "RS_")) %>% 
+  select(-X1) %>% 
+  mutate(accession_helper = str_remove(accession_helper, "GB_")) |> 
+  rename(accession = accession_helper) |> 
+  tidyr::separate_wider_delim(accession, delim = ".", names = c("accession_helper", "accession_version")) |>
+  distinct(accession_helper, .keep_all = T)
+# load RefSeq tax, source is custom GTDB-Tk analysis
+gtdb_tk_tax <- read_csv("gtdbtk.bac120.summary.csv", 
+    trim_ws = FALSE) |>  
+  select(user_genome, classification) |> 
+  dplyr::rename(X2 = classification) |> 
+  tidyr::separate_wider_delim(user_genome, delim = ".", names = c("accession_helper", "accession_version")) |>
+  distinct(accession_helper, .keep_all = T)
+tax_merged <- add_row(refseq_tax, gtdb_tk_tax)
+
+# diamond results 20240610
+all_trace_genes_renamed_diamond <- read_delim("all_trace_genes_renamed_diamond.tsv", 
+                                              delim = "\t", escape_double = FALSE, 
+                                              col_names = FALSE) |> 
+  group_by(X1) |> 
+  slice_max(X12, with_ties = T) |> # bitscore filter
+  slice_min(X11, with_ties = T) |> # evalue filter
+  slice_max(X3, with_ties = F, n = 1) |>  # pident filter, ties F to choose the first one if previous are same
+  ungroup()
+
+# merge gene list and diamond results, filter for trace gases
+distinct_full_taxonomy <- select(all_trace_genes_renamed_diamond, X1, X2, X11, X12) |> 
+  tidyr::separate_wider_delim(X1, delim = "|", names = c("qseqid", "treatment")) |> 
+  tidyr::separate_wider_delim(X2, delim = "|", names = c("accession_helper", "gene_id")) |>
+  left_join(tax_merged, by = "accession_helper") |> 
+  right_join(distinct_full, "qseqid") |> 
+  tidyr::separate_wider_delim(X2, delim = ";", names = c("domain", "phylum", "class","order", "family", "genus", "species")) |>
+  filter(function_diamond == "Carbon monoxide oxidation" | 
+           function_diamond == "Methane oxidation" | 
+           function_diamond == "hydrogenase") |>
+  group_by(gene, class, treatment) |>  
+  summarise(n = n()) |> 
+  #filter(is.na(class)) |> # see how many does not have taxonomy
+  left_join(read_csv("gene_numbers.csv", 
+    trim_ws = FALSE), # gene-call counts
+            by = "treatment") |>
+  mutate(perc = (n/gene_count)*1e6) |> # genes per mio of genes
+  filter(!is.na(class)) |> # remove no hits from diamond tax
+  left_join(read_csv("distinct_full_taxonomy_helper.csv", 
+    trim_ws = FALSE),
+            by = c("gene", "class")) |># join helper table to plot only most abundant
+  mutate(class_helper = if_else(is.na(class_helper), true = "others", false = class_helper)) |>
+  group_by(gene, class_helper, temp) |> 
+  summarise(perc_mean = mean(perc), se = sd(perc)/(sqrt(n())), n = n()) |>
+  ungroup() |> 
+  group_by(class_helper) |> 
+  mutate(sort_help = mean(perc_mean)) |> # display in ggplot
+  mutate(class_helper = str_remove(class_helper, "c__")) |> 
+  mutate(temp = fct_recode(temp, `Long−term warmed` = "warm")) |>
+  mutate(temp = fct_recode(temp, Ambient = "ambient")) |>
+  mutate(wd = if_else(gene == "CoxL", true = 1, false = 
+                        if_else(gene == "NiFe", true = 1, false = 0.3))) |>
+  glimpse()
+```
+
+

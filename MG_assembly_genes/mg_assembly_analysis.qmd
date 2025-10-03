@@ -158,9 +158,6 @@ W1 <- read_add_and_process_data("W1.proteins_Annotation_file.txt.gz")
 W2 <- read_add_and_process_data("W2.proteins_Annotation_file.txt.gz")
 W4 <- read_add_and_process_data("W4.proteins_Annotation_file.txt.gz")
 W5 <- read_add_and_process_data("W5.proteins_Annotation_file.txt.gz")
-# Read, add columns, and process data for each public metagenomes
-A6 <- read_add_and_process_data("SRR15130125_final.contigs.proteins_Annotation_file.txt.gz")
-W6 <- read_add_and_process_data("SRR15130128_final.contigs.proteins_Annotation_file.txt.gz")
 
 # Add a sample column 
 A1$Sample <- "Ambient1"
@@ -176,7 +173,7 @@ W5$Sample <- "Warm5"
 combined_data <- rbind(A1, A2, A4, A5, W1, W2, W4, W5)
 
 # load target annotations
-diamond_annotations <- read_csv("distinct_full_taxonomy_helper.csv", 
+diamond_annotations <- read_csv("diamond_target_annotations.csv", 
     trim_ws = FALSE) %>% 
   janitor::clean_names() %>% 
   glimpse()
@@ -326,7 +323,7 @@ gtdb_tk_tax <- read_csv("gtdbtk.bac120.summary.csv",
   distinct(accession_helper, .keep_all = T)
 tax_merged <- add_row(refseq_tax, gtdb_tk_tax)
 
-# diamond results 20240610
+# diamond results
 all_trace_genes_renamed_diamond <- read_delim("all_trace_genes_renamed_diamond.tsv", 
                                               delim = "\t", escape_double = FALSE, 
                                               col_names = FALSE) |> 

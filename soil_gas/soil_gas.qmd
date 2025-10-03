@@ -1,0 +1,244 @@
+---
+title: "soil gas concentration and isotopic composition"
+author: "Vojtech Tlaskal"
+date: today
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    latex-engine: xelatex      
+    geometry: margin=1in
+---
+
+## Data Processing Pipeline
+
+This code reports processing of data about soil gas concentration and calculation of Rayleigh distillation function.
+
+```{r setup}
+# Load required libraries
+library(tidyverse)
+library(tidylog)
+library(readr)
+library(readxl)
+library(openxlsx2)
+library(broom)
+
+# Set global options
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+## Rayleigh distillation function
+
+```{r}
+# rayleigh ch4
+rayleigh_input <- read_tsv("soil_gas_data.tsv") %>% 
+  #filter(sample_type != "air") %>%
+  filter(plot_no != 3) %>% # lost gradient
+  ungroup() |>
+  filter(conc_ch4_total > 1.2) |> # lower values - delta is not reliable
+  dplyr::group_by(site, plot_no, depth) |> # some depth were measured as technical replicates
+  dplyr::summarise(mean_delta_ch4_conccorr = mean(delta_ch4_conccorr, na.rm = T), 
+                   mean_conc_ch4_dilcorr = mean(conc_ch4_dilcorr, na.rm = T), 
+                   n = n()) |> # some depth were measured as technical replicates
+  mutate(site = fct_recode(site, ambient = "GOA", `long−term warmed` = "GOE")) |>
+  mutate(depth_air = dplyr::if_else(is.na(depth), 100, depth)) |> # to include air samples
+  mutate(plot_no_site = if_else(depth_air < 100, paste(plot_no, site, sep = "_"), NA)) |> # to join only soil samples with lines
+  mutate(plot_no_site_depth = paste(plot_no, site, depth, sep = "_")) |> # helper join to filter below
+  filter(plot_no_site_depth != "1_ambient_10") %>% # remove because this sample groups together with ambient air samples and was probably wrongly labelled
+  select(site, depth, mean_delta_ch4_conccorr, mean_conc_ch4_dilcorr, plot_no) %>% 
+  mutate(type = case_when(
+    is.na(depth) ~ "ambient",
+    TRUE ~ "soil_sample"
+  )) %>% 
+  glimpse
+
+# Rayleigh Distillation Analysis - Direct δ13C Method
+# Formula: δ13C_sample = δ13C_initial + ε × ln(f)
+
+# Input data
+data <- rayleigh_input
+
+# Known parameters
+alpha_known <- 1.020 # ref. in supplementary material of the paper Voigt et al., (2023) https://doi.org/10.1038/s41558-023-01785-3
+epsilon_known <- (1 - alpha_known) * 1000  # Should be 20 per mil
+
+# Separate ambient and sample data
+ambient_data <- data %>% filter(type == "ambient")
+sample_data <- data %>% filter(type == "soil_sample")
+
+# Calculate initial conditions from ambient data
+# CALCULATION: Average of ambient samples as "initial" atmospheric values
+delta_initial <- mean(ambient_data$mean_delta_ch4_conccorr)  
+C_initial <- mean(ambient_data$mean_conc_ch4_dilcorr)       
+
+# Calculate fraction remaining and predictions for samples
+sample_data <- sample_data %>%
+  mutate(
+    # CALCULATION: f = C_sample / C_initial (fraction remaining)
+    f = mean_conc_ch4_dilcorr / C_initial,
+    
+    # CALCULATION: Natural logarithm of fraction remaining
+    ln_f = log(f),
+    
+    # CALCULATION: Rayleigh equation δ13C = δ13C_initial + ε × ln(f)
+    delta_predicted = delta_initial + epsilon_known * ln_f,
+    
+    # CALCULATION: Residual = observed - predicted
+    residual = mean_delta_ch4_conccorr - delta_predicted
+  )
+
+# Linear regression for comparison
+model <- lm(mean_delta_ch4_conccorr ~ ln_f, data = sample_data)
+model_summary <- tidy(model)
+r_squared <- summary(model)$r.squared
+
+# Model fit statistics
+rmse <- sqrt(mean(sample_data$residual^2))
+mae <- mean(abs(sample_data$residual))
+
+# Results summary
+results_summary <- tibble(
+  Parameter = c("Initial δ13C (‰)", "Initial concentration (ppm)", "Known α", "Known ε (‰)", 
+                "Observed slope (‰)", "R-squared", "RMSE (‰)", "MAE (‰)"),
+  Value = c(round(delta_initial, 2), round(C_initial, 3), alpha_known, epsilon_known,
+            round(model_summary$estimate[2], 1), round(r_squared, 3), round(rmse, 2), round(mae, 2))
+)
+
+# Sample results table
+sample_results <- sample_data %>%
+  select(mean_delta_ch4_conccorr, mean_conc_ch4_dilcorr, f, ln_f, delta_predicted, residual) %>%
+  mutate(across(where(is.numeric), ~round(.x, 3)))
+
+# Use full range of concentrations (ambient + sample)
+conc_range <- range(data$mean_conc_ch4_dilcorr)  # Automatically gives min and max across all data
+
+prediction_df <- tibble(
+  conc = seq(conc_range[1], conc_range[2], length.out = 200)
+) %>%
+  mutate(
+    f = conc / C_initial,
+    delta_predicted = delta_initial + epsilon_known * log(f)
+  )
+```
+
+## δ^13^C-CH~4~ values
+
+```{r}
+# δ13C-CH4 data
+plot_data <- read_tsv("soil_gas_data.tsv") %>% 
+  #filter(sample_type != "air") %>%
+  filter(plot_no != 3) %>% # lost gradient
+  ungroup() |>
+  filter(conc_ch4_total > 1.2) |> # lower values - delta is not reliable
+  dplyr::group_by(site, plot_no, depth) |> # some depth were measured as technical replicates
+  dplyr::summarise(mean_delta_ch4_conccorr = mean(delta_ch4_conccorr, na.rm = T), 
+                   mean_conc_ch4_dilcorr = mean(conc_ch4_dilcorr, na.rm = T), 
+                   n = n()) |> # some depth were measured as technical replicates
+  mutate(site = fct_recode(site, ambient = "GOA", `long−term warmed` = "GOE")) |>
+  mutate(depth_air = dplyr::if_else(is.na(depth), 100, depth)) |> # to include air samples
+  mutate(plot_no_site = if_else(depth_air < 100, paste(plot_no, site, sep = "_"), NA)) |> # to join only soil samples with lines
+  mutate(plot_no_site_depth = paste(plot_no, site, depth, sep = "_")) |> # helper join to filter below
+  filter(plot_no_site_depth != "1_ambient_10") %>% # remove because this sample groups together with ambient air samples and was probably wrongly labelled
+  glimpse
+
+# plot
+plot_ch4 <- ggplot(data = plot_data) +
+  geom_point(aes(mean_conc_ch4_dilcorr,
+                 mean_delta_ch4_conccorr,
+                 shape = as_factor(depth_air), 
+                 colour = site, 
+                 group = plot_no_site), size = 3, alpha = .7) +
+  geom_line(aes(mean_conc_ch4_dilcorr,
+                mean_delta_ch4_conccorr,
+                colour = site, 
+                group = plot_no_site)) +
+  #scale_x_continuous(trans='log10') +
+  xlab(expression("CH"[4] * " concentration" * " [ppmv]")) +
+  labs(
+    y = "*&delta;*<sup>13</sup>C - CH<sub>4</sub>", 
+    color  = "sites", 
+    shape = "sites"
+  ) + #https://stackoverflow.com/a/49791164
+  scale_shape_manual(values = c("5" = 16,      
+                                "10" = 17,         
+                                "NA" = 3),           
+                     na.value = 3) + 
+  scale_colour_brewer(palette = "Set2", direction = 1) +
+  #geom_hline(yintercept = 0, linetype="dashed", color = "gray50") +
+  geom_vline(xintercept = 1.2, linetype = "dashed", color = "gray50") +
+  geom_line(data = prediction_df, aes(x = conc, y = delta_predicted), color = "#8DA0CB", linewidth = 0.5, linetype = "dashed") + # add Rayleigh from a separate R chunk
+  theme_classic() +
+  theme(
+    panel.border = element_blank(),
+    legend.title = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_blank(),
+    axis.text.x = element_text(angle = 0),
+    legend.position = "none",
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title = element_text(color = "black", size = 12),
+    panel.grid = element_blank(),
+    plot.margin = margin(20, 20, 20, 20),
+    axis.title.y = element_markdown())
+plot_ch4
+# ggsave this plot
+```
+
+## δ^13^C-CO~2~ values
+
+```{r}
+# δ13C-CO2 data
+plot_co2 <- read_tsv("soil_gas_data.tsv") %>% 
+  #filter(sample_type != "air") %>%
+  filter(plot_no != 3) %>% # lost gradient
+  ungroup() |> 
+  filter(!is.na(delta_co2_conccorr)) |> # remove NAs
+  dplyr::group_by(site, plot_no, depth) |> # some depth were measured as technical replicates
+  dplyr::summarise(mean_delta_co2_conccorr = mean(delta_co2_conccorr, na.rm = T), 
+                   mean_conc_co2_dilcorr = mean(conc_co2_dilcorr, na.rm = T), 
+                   n = n()) |> # some depth were measured as technical replicates
+  mutate(site = fct_recode(site, ambient = "GOA", `long−term warmed` = "GOE")) |>
+  mutate(mean_conc_co2_dilcorr_inv = 1/mean_conc_co2_dilcorr) |>
+  mutate(depth_air = dplyr::if_else(is.na(depth), 100, depth)) |> # to include air samples
+  mutate(plot_no_site = if_else(depth_air < 100, paste(plot_no, site, sep = "_"), NA)) |> # to join only soil samples with lines
+  mutate(plot_no_site_depth = paste(plot_no, site, depth, sep = "_")) |> # helper join to filter below
+  filter(plot_no_site_depth != "1_ambient_10") %>% # remove because this sample groups together with ambient air samples and was probably wrongly labelled
+  ggplot() +
+  aes(mean_conc_co2_dilcorr, mean_delta_co2_conccorr, 
+      shape = as_factor(depth_air), 
+      colour = site, 
+      label = plot_no, 
+      group = plot_no_site) + 
+  geom_point(size = 3, alpha = .7) +
+  geom_line() +
+  scale_x_continuous(trans='log10') +
+  xlab(expression("CO"[2] * " concentration" * " [log ppmv]")) +
+  labs(
+    y = "*&delta;*<sup>13</sup>C - CO<sub>2</sub>", 
+    color  = "sites", 
+    shape = "sites"
+  ) + #https://stackoverflow.com/a/49791164
+  scale_colour_brewer(palette = "Set2", direction = 1) +
+  geom_hline(yintercept = 0, linetype="dashed", color = "gray50") +
+  #ggrepel::geom_text_repel() +
+  theme_classic() +
+  theme(
+    panel.border = element_blank(),
+    legend.title = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_blank(),
+    axis.text.x = element_text(angle = 0),
+    legend.position = "none",
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title = element_text(color = "black", size = 12),
+    panel.grid = element_blank(),
+    plot.margin = margin(20, 20, 20, 20),
+    axis.title.y = element_markdown()
+    )
+plot_co2
+# ggsave this plot
+```

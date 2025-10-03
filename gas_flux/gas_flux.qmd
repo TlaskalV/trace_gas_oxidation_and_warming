@@ -1,0 +1,191 @@
+---
+title: "in situ gas flux quantification"
+author: "Vojtech Tlaskal"
+date: today
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    latex-engine: xelatex      
+    geometry: margin=1in
+---
+
+## Data Processing Pipeline
+
+This code reports quantification of gas flux. Raw Li-Cor data were processed using custom Shiny app 
+
+Tlaskal, V. (2023). TlaskalV/Licor_app: v1.0. doi: 10.5281/ZENODO.7678827
+
+
+```{r setup}
+# Load required libraries
+library(tidyverse)
+library(tidylog)
+library(readr)
+library(readxl)
+library(openxlsx2)
+
+# Set global options
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r}
+# load ideal gas law values
+source("ideal_gas_law.R")
+
+# licor rates calculated from app
+licor_rates <- read_excel("go_licor_rates_from_app.xlsx") %>% 
+  janitor::clean_names() %>% 
+  mutate(date = lubridate::dmy(date)) %>%
+  left_join(metadata, by = "id") %>%
+  dplyr::rename(ch4_ppb = ch4) %>% # specify units
+  mutate(ch4 = ch4_ppb/1000) %>% # convert ppb to ppm
+  pivot_longer(cols = c('co2', 'ch4'),
+               names_to = 'gas',
+               values_to ='rate') %>%
+  mutate(chamber_volume_l = (((pi * ((11/100)/2)^2) * (10/100)) * 1000)) %>%  # volume diameter 11 cm, height of the collar 10 cm, in litres/dm3
+  mutate(mol_air_in_chamber = ((pressure * chamber_volume_l)/(R_const * (273.15 + temp_20220726)))) %>% # calculate mol of air in the chamber at given temperature measured on 20220726
+  mutate(mol_change_target = mol_air_in_chamber/(1000000/rate)) %>% # which fraction is target gas
+  left_join(molar_mass, "gas") %>% # add molar mass
+  mutate(g_s_target = mol_change_target * molar_mass) %>% # get weight of gas per second
+  mutate(g_s_m = g_s_target/(pi * ((11/100)/2)^2)) %>% # correct for m2 area of diameter 11 cm of the collar
+  mutate(mg_h_m = (g_s_m * 3600 * 1000)) %>% # final unit fix - mg per hour
+  filter(transect != 3) %>% # remove transect without temperature gradient
+  glimpse
+
+# calculate average value
+day_averaged <- licor_rates |> 
+  group_by(gas, plot, transect) |> 
+  dplyr::summarise(mean = mean(mg_h_m), n = n()) |> 
+  ungroup() |> 
+  print()
+Rmisc::summarySE(data = day_averaged, groupvars = c("gas", "plot"), measurevar = "mean")
+```
+
+## Visualization
+
+```{r}
+# Data processing - keep individual observations AND calculate summary stats
+individual_data <- licor_rates %>%
+  mutate(site = fct_recode(plot, Unwarmed = "A", `Long−term warmed` = "E")) |> 
+  glimpse()
+
+# Calculate summary statistics for mean lines and error bars
+summary_stats <- individual_data |> 
+  group_by(gas, site) |> 
+  dplyr::summarise(
+    mean = mean(mg_h_m), 
+    se = sd(mg_h_m) / sqrt(length(mg_h_m)), 
+    n_obs = length(mg_h_m),
+    .groups = 'drop'
+  )
+
+# Create the plot with individual points, mean lines, and error bars
+licor_plot_rates_boxplot_ch4 <- ggplot() +
+  
+  # Add individual points
+  geom_point(data = filter(individual_data, gas == "ch4"),
+             aes(x = site, y = mg_h_m, color = site),
+             size = 3, position = position_jitter(width = 0.1, seed = 123)) +
+  
+  # Add mean lines (vertical segments)
+  geom_segment(data = filter(summary_stats, gas == "ch4"),
+               aes(x = as.numeric(factor(site)) - 0.1,
+                   xend = as.numeric(factor(site)) + 0.1,
+                   y = mean,
+                   yend = mean),  # Adjust yend for the top of the segment
+               color = "black",
+               linewidth = 1.2) +
+  
+  # Add error bars (SE)
+  geom_errorbar(data = filter(summary_stats, gas == "ch4"),
+                aes(x = site,
+                    y = mean,
+                    ymin = mean - se,
+                    ymax = mean + se),
+                color = "black",
+                width = 0.1,  # Width for better visibility
+                linewidth = 1) +
+  
+  # Color scheme using ColorBrewer Set2
+  scale_colour_brewer(palette = "Set2") +
+  
+  # Axis labels
+  ylab(expression("rate of CH"[4] * " flux [mg m"[2]^-1 * "h"^-1 * "]")) +
+  
+  # Theme customization matching your style
+  theme_classic() +
+  theme(
+    panel.border = element_blank(),
+    legend.title = element_blank(),
+    strip.background = element_blank(),
+    axis.text.x = element_text(angle = 0),
+    legend.position = "none",
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title = element_text(color = "black", size = 12),
+    axis.title.x = element_blank(),
+    strip.text = element_blank(),  # Remove facet titles
+    panel.grid = element_blank(),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+
+# Display the plot
+print(licor_plot_rates_boxplot_ch4)
+
+# Create the plot with individual points, mean lines, and error bars
+licor_plot_rates_boxplot_co2 <- ggplot() +
+  
+  # Add individual points
+  geom_point(data = filter(individual_data, gas == "co2"),
+             aes(x = site, y = mg_h_m, color = site),
+             size = 3, position = position_jitter(width = 0.1, seed = 123)) +
+  
+  # Add mean lines (vertical segments)
+  geom_segment(data = filter(summary_stats, gas == "co2"),
+               aes(x = as.numeric(factor(site)) - 0.1,
+                   xend = as.numeric(factor(site)) + 0.1,
+                   y = mean,
+                   yend = mean),  # Adjust yend for the top of the segment
+               color = "black",
+               linewidth = 1.2) +
+  
+  # Add error bars (SE)
+  geom_errorbar(data = filter(summary_stats, gas == "co2"),
+                aes(x = site,
+                    y = mean,
+                    ymin = mean - se,
+                    ymax = mean + se),
+                color = "black",
+                width = 0.1,  # Width for better visibility
+                linewidth = 1) +
+  
+  # Color scheme using ColorBrewer Set2 (colorblind-safe)
+  scale_colour_brewer(palette = "Set2") +
+  
+  # Axis labels
+  ylab(expression("rate of CO"[2] * " flux [mg m"[2]^-1 * "h"^-1 * "]")) +
+  
+  # Theme customization matching your style
+  theme_classic() +
+  theme(
+    panel.border = element_blank(),
+    legend.title = element_blank(),
+    strip.background = element_blank(),
+    axis.text.x = element_text(angle = 0),
+    legend.position = "none",
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    axis.ticks = element_line(color = "black", linewidth = 0.8),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title = element_text(color = "black", size = 12),
+    axis.title.x = element_blank(),
+    strip.text = element_blank(),  # Remove facet titles
+    panel.grid = element_blank(),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+# Display the plot
+print(licor_plot_rates_boxplot_co2)
+```

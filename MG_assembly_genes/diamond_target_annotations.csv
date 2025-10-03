@@ -1,0 +1,54 @@
+Gene,function_diamond
+AtpA,Oxidative phosphorylation
+CoxA,Aerobic respiration
+CcoN,Aerobic respiration
+CydA,Aerobic respiration
+CyoA,Aerobic respiration
+NuoF,NADH oxidation
+SdhA,Succinate oxidation/fumarate reduction
+FrdA,Succinate oxidation/fumarate reduction -
+SdhA_FrdA,Succinate oxidation/fumarate reduction -
+CoxL,Carbon monoxide oxidation
+MmoX,Methane oxidation
+PmoA,Methane oxidation
+McrA,Methane production
+IsoA,Isoprene oxidation
+Sqr,Sulfide oxidation
+FCC,Sulfide oxidation
+NiFe,hydrogenase
+FeFe,hydrogenase
+Fe,hydrogenase
+SoxB,Thiosulfate oxidation
+AsrA,Sulfide oxidation/reduction
+DsrA,Sulfide oxidation/reduction
+Sor,Sulfur disproportionation
+AmoA,Ammonia oxidation
+HzsA,Anammox
+NapA,Nitrate reduction
+NarG,Nitrate reduction
+NirK,Nitrite reduction to nitric oxide
+NirS,Nitrite reduction to nitric oxide
+NxrA,Nitrite oxidation to nitrate
+NorB,Nitric oxide reduction to nitrous oxide
+NosZ,Nitrous oxide reduction
+NrfA,Nitrite reduction to ammonium
+NifH,Dinitrogen fixation
+Nod,Nitric oxide disproportionation
+AclB,Reductive TCA cycle
+AcsB,Wood Ljungdahl pathway
+CooS,Wood Ljungdahl pathway
+HbsC,4-hydroxybutyrate cycles
+HbsT,4-hydroxybutyrate cycles
+Mcr,3-hydroxypropionate cycle
+RbcL,Calvin-Benson cycle
+PsaA,Photosystem I reaction centre
+PsbA,Photosystem II reaction centre
+RHO,Light-dependent proton/sodium pumping
+ArsC,Arsenate reduction to arsenite
+MtrB,Ferric iron reduction to ferrous iron
+OmcB,Ferric iron reduction to ferrous iron
+RdhA,Reductive dehalogenation
+YgfK,Selenate reduction to selenite
+ARO,Arsenite oxidation to arsenate
+Cyc2,Ferrous iron oxidation to ferric iron
+FdhA,Formate oxidation

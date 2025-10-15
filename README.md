@@ -18,7 +18,7 @@ R scripts used for analysis of response of soil trace gas oxidisers to long-term
 
 ## File description
 
-Raw sequences together with subject's metadata are available at NCBI/ENA *to be added*.
+Raw sequences together with subject's metadata are available at ENA PRJEB98590.
 Processed data are available at figshare  *to be added*.
 
 ## References

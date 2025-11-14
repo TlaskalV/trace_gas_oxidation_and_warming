@@ -27,6 +27,8 @@ The raw sequencing data, together with sample metadata, have been deposited at t
 
 Barbone, J. M., and Garbuszus, J. M. (2025). openxlsx2: Read, Write and Edit “xlsx” Files. Available at: https://janmarvin.github.io/openxlsx2/
 
+Dahl, M. B., Brachmann, S., Söllinger, A., Schnell, M., Ahlers, L., Wutkowska, M., et al. (2025). Quantifying soil microbiome abundance by metatranscriptomics and complementary molecular techniques—Cross-validation and perspectives. Molecular Ecology Resources, e14130. doi: 10.1111/1755-0998.14130
+
 Elbers, B. (2020). tidylog: Logging for “dplyr” and “tidyr” Functions. Available at: https://CRAN.R-project.org/package=tidylog
 
 Hope, R. M. (2022). Rmisc: Ryan miscellaneous. Available at: https://CRAN.R-project.org/package=Rmisc

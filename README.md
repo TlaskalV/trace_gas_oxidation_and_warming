@@ -18,15 +18,10 @@ The upland soil microbiome is dominated by aerobic bacteria that oxidize atmosph
 
 ## File description
 
-<<<<<<< HEAD
-Raw sequences together with subject's metadata are available at ENA PRJEB98590.
-Processed data are available at figshare  *to be added*.
-=======
 The raw sequencing data, together with sample metadata, have been deposited at the ENA under the accession numbers PRJEB98590 (metagenome data) and PRJNA1130687 (metatranscriptome data, Dahl et al., 2025), run accessions SRR29850129, SRR29850130, SRR29850145, SRR29850146, SRR29850149, SRR29850150, SRR29850151, SRR29850152.
 
 ## Citation
 *to be added*
->>>>>>> 6845f70 (abstract and data section updated)
 
 ## References
 

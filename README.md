@@ -9,14 +9,14 @@ R scripts used for analysis of response of soil trace gas oxidisers to long-term
 ## Table of contents
 
 * [Abstract](#abstract)
-* [File description](#file-description)
+* [Data availability](#data-availability)
 * [Citation](#citation)
 * [References](#references)
 
 ## Abstract
 The upland soil microbiome is dominated by aerobic bacteria that oxidize atmospheric trace gases – CO, H₂, and CH₄ – making soils the largest biological sink for these climate-active gases. Whether global warming will enhance or suppress these processes remains unclear. Here we studied the warming responses of soil trace gas oxidizers by profiling natural geothermal gradients in a subarctic grassland (>60 years of field warming at +6°C). We integrate field flux measurements, ex situ biogeochemical assays, metagenomics, and metatranscriptomics to determine ecosystem and cellular level responses. Our results show that the oxidation of atmospheric CO and H₂, but not CH₄, increased with long-term warming through higher cell numbers. However, at the cellular level, trace gas oxidizers and especially methanotrophs tended to reduce gas consumption and transcription of gas metabolizing enzymes with long-term warming. Our results suggest that soils may remain a robust sink for trace gases, despite lower per-cell activity. This work provides a framework for interpreting the links between temperature and microbial trace gas oxidation on timescales relevant to Earth’s climate system.
 
-## File description
+## Data availability
 
 The raw sequencing data, together with sample metadata, have been deposited at the ENA under the accession numbers PRJEB98590 (metagenome data) and PRJNA1130687 (metatranscriptome data, Dahl et al., 2025), run accessions SRR29850129, SRR29850130, SRR29850145, SRR29850146, SRR29850149, SRR29850150, SRR29850151, SRR29850152.
 

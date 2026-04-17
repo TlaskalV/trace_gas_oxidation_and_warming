@@ -18,10 +18,10 @@ The upland soil microbiome is dominated by aerobic bacteria that oxidize atmosph
 
 ## Data availability
 
-The raw sequencing data, together with sample metadata, have been deposited at the ENA under the accession numbers PRJEB98590 (metagenome data) and PRJNA1130687 (metatranscriptome data, Dahl et al., 2025), run accessions SRR29850129, SRR29850130, SRR29850145, SRR29850146, SRR29850149, SRR29850150, SRR29850151, SRR29850152.
+The raw sequencing data, together with sample metadata, have been deposited at the ENA under the accession numbers [PRJEB98590](https://www.ebi.ac.uk/ena/browser/view/PRJEB98590) (metagenome data) and [PRJNA1130687](https://www.ebi.ac.uk/ena/browser/view/PRJNA1130687) (metatranscriptome data, Dahl et al., 2025), run accessions SRR29850129, SRR29850130, SRR29850145, SRR29850146, SRR29850149, SRR29850150, SRR29850151, SRR29850152.
 
 ## Citation
-T. Nguyen-Dinh, V. Tlaskal, P. M. Leung, M. Wutkowska, J. A. Nweze, K. Yla-Soininmaki, J. Kerttula, M. B. Dahl, A. Sollinger, T. Schmider, C. Biasi, A. Richter, T. Urich, A. T. Tveit, C. Greening, B. D. Sigurdsson, A. Daebeler, Soil trace gas oxidizers divergently respond to short- and long-term warming. Microbiology [Preprint] (2025). https://doi.org/10.1101/2025.11.18.689010.
+> T. Nguyen-Dinh, V. Tlaskal, P. M. Leung, M. Wutkowska, J. A. Nweze, K. Yla-Soininmaki, J. Kerttula, M. B. Dahl, A. Sollinger, T. Schmider, C. Biasi, A. Richter, T. Urich, A. T. Tveit, C. Greening, B. D. Sigurdsson, A. Daebeler, Soil trace gas oxidizers divergently respond to short- and long-term warming. bioRxiv (2025). [DOI: 10.1101/2025.11.18.689010](https://doi.org/10.1101/2025.11.18.689010)
 
 ## References
 

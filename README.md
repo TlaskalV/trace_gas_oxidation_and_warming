@@ -1,4 +1,6 @@
 # Soil trace gas oxidizers and their response to warming
+[![DOI](https://zenodo.org/badge/1068977939.svg)](https://doi.org/10.5281/zenodo.19629207)
+
 R scripts used for analysis of response of soil trace gas oxidisers to long-term and short-term warming. The study was done within a ForHot experiment, Iceland (Sigurdsson et al., 2016).
 
 <div align="right">

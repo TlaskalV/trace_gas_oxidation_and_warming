@@ -1,0 +1,148 @@
+---
+title: "ex-situ oxidation rates"
+format: html
+editor: visual
+author: Vojtech Tlaskal
+email: vojtech.tlaskal@bc.cas.cz
+date: 2026-05-15
+---
+
+Script for processing ex-situ oxidation data and calculation of oxidation rates (Table S10).
+
+```{r}
+library(tidyverse)
+library(tidylog)
+library(readr)
+
+# read modified input and keep rows for kinetics
+trace_gas_oxidation <- read_tsv("ex_situ_oxidation_data.tsv")
+
+# show groups
+groups <- distinct(trace_gas_oxidation, group) %>% 
+  print
+
+# model fitting
+lm_summary_by_group <- trace_gas_oxidation %>%
+  group_by(group) %>%
+  group_modify(~ {
+    m <- lm(nmol_l ~ time, data = .x)
+    bind_cols(
+      broom::tidy(m)  %>% filter(term == "time") %>%
+        select(slope = estimate, std_error = std.error, t_stat = statistic, p_value = p.value),
+      broom::glance(m) %>% select(r_squared = r.squared)
+    )
+  }) %>%
+  arrange(group) %>% 
+  print
+
+# model fitting - first order kinetics (ln-transformed)
+lm_summary_by_group_first <- trace_gas_oxidation %>%
+  mutate(ln_nmol_l = log(nmol_l)) %>% # for the first order
+  group_by(group) %>%
+  group_modify(~ {
+    m <- lm(ln_nmol_l ~ time, data = .x)
+    bind_cols(
+      broom::tidy(m)  %>% filter(term == "time") %>%
+        select(slope = estimate, std_error = std.error, t_stat = statistic, p_value = p.value),
+      broom::glance(m) %>% select(r_squared = r.squared)
+    )
+  }) %>%
+  arrange(group) %>%
+  print
+
+#write_tsv(distinct(trace_gas_oxidation, group), "distinct_group.tsv")
+
+group_levels <- c(
+  # transect 1
+  "1_unwarmed_13_CO","1_unwarmed_13_H2","1_unwarmed_13_CH4",
+  "1_unwarmed_19_CO","1_unwarmed_19_H2","1_unwarmed_19_CH4",
+  "1_warmed_19_CO","1_warmed_19_H2","1_warmed_19_CH4",
+  # transect 2
+  "2_unwarmed_13_CO","2_unwarmed_13_H2","2_unwarmed_13_CH4",
+  "2_unwarmed_19_CO","2_unwarmed_19_H2","2_unwarmed_19_CH4",
+  "2_warmed_19_CO","2_warmed_19_H2","2_warmed_19_CH4",
+  # transect 4
+  "4_unwarmed_13_CO","4_unwarmed_13_H2","4_unwarmed_13_CH4",
+  "4_unwarmed_19_CO","4_unwarmed_19_H2","4_unwarmed_19_CH4",
+  "4_warmed_19_CO","4_warmed_19_H2","4_warmed_19_CH4",
+  # transect 5
+  "5_unwarmed_13_CO","5_unwarmed_13_H2","5_unwarmed_13_CH4",
+  "5_unwarmed_19_CO","5_unwarmed_19_H2","5_unwarmed_19_CH4",
+  "5_warmed_19_CO","5_warmed_19_H2","5_warmed_19_CH4"
+)
+
+# Build a named label vector
+group_labels <- unique(trace_gas_oxidation$group) %>%
+  setNames(., .) %>%
+  str_replace("^(\\d+)_.*_(H2|CO|CH4)$", "\\1~\\2") %>%  # keep only number + gas
+  str_replace("H2",  "H[2]") %>%
+  str_replace("CH4", "CH[4]") %>%
+  { setNames(., unique(trace_gas_oxidation$group)) }       
+
+# plot
+model_data <- lm_summary_by_group %>% select(group, slope, r2 = r_squared)
+model_data_first <- lm_summary_by_group_first %>% select(group, slope, r2 = r_squared) %>% 
+  mutate(group = factor(group, levels = group_levels))
+
+palette <- c("unwarmed_13" = "#66C2A5", "unwarmed_19" = "#8DA0CB", "warmed_19" = "#FC8D62")
+
+# load plot for first order kinetics
+gg_plot_all <- trace_gas_oxidation %>%
+  mutate(
+    colour_group = str_extract(group, "(?<=\\d_)(unwarmed_13|unwarmed_19|warmed_19)"),
+    ln_nmol_l    = log(nmol_l)
+  ) %>%
+  mutate(group = factor(group, levels = group_levels)) %>% 
+  ggplot(aes(x = time, y = ln_nmol_l, colour = colour_group)) +
+  geom_point(alpha = 0.8, size = 2) +
+  geom_smooth(
+    method    = "lm",
+    se        = FALSE,
+    colour    = "grey50",
+    linewidth = 0.8,
+    linetype  = "dashed"
+  ) +
+  geom_text(
+    data = model_data_first,
+    aes(x = Inf, y = Inf, label = sprintf("slope = %.3f\nR² = %.3f", slope, r2)),
+    hjust = 1.05, vjust = 1.05, size = 3.5, colour = "black",
+    inherit.aes = FALSE
+  ) +
+  scale_colour_manual(
+    values = palette,
+    name   = "",
+    labels = c("unwarmed_13" = "Unwarmed",
+               "unwarmed_19" = "Short-term warmed",
+               "warmed_19"   = "Long-term warmed")
+  ) +
+  facet_wrap(~ group, ncol = 9, labeller = as_labeller(group_labels, label_parsed), scales = "free_x") +
+  labs(
+    x = "Time (h)",
+    y = "Gas concentration [ln(nmol L⁻¹)]"
+  ) +
+  theme_minimal(base_size = 16) +                              
+  theme(
+    # Facet strip
+    strip.text        = element_text(face = "bold", colour = "darkslategray", size = 12),
+
+    # Axis text (tick labels) and titles
+    axis.text         = element_text(size = 14),
+    axis.title        = element_text(size = 16),
+
+    # Tick marks
+    axis.ticks        = element_line(colour = "grey40", linewidth = 0.1),
+    axis.ticks.length = unit(4, "pt"),
+
+    # Major grid
+   panel.grid.major = element_line(colour = "grey96", linewidth = 0.25), 
+    panel.grid.minor  = element_blank(),
+    axis.line = element_line(colour = "black", linewidth = 0.5),
+
+    # Legend
+    legend.position   = "bottom",
+    legend.text       = element_text(size = 16)
+  )
+
+gg_plot_all
+
+```

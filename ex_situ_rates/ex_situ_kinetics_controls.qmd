@@ -1,0 +1,194 @@
+---
+title: "ex-situ oxidation rates - controls"
+format: html
+editor: visual
+author: Vojtech Tlaskal
+email: vojtech.tlaskal@bc.cas.cz
+date: 2026-06-06
+---
+
+Script for processing ex-situ oxidation data for control microcosm incubations and calculation of oxidation rates (Table S10).
+
+```{r}
+library(tidyverse)
+library(tidylog)
+library(ggh4x)
+
+# read modified input and keep rows for kinetics
+trace_gas_oxidation_controls <- read_tsv("ex_situ_oxidation_rates_controls.tsv")
+
+# show groups
+groups <- distinct(trace_gas_oxidation_controls, group) %>% 
+  print
+
+# edit
+trace_gas_oxidation_clean <- trace_gas_oxidation_controls %>%
+  filter(!is.na(nmol_l), nmol_l > 0) %>% 
+   mutate(
+    treatment = str_extract(group, "Heat-Killed|Blank"),
+    temp      = str_extract(group, "(?<=_)\\d+(?=_)"),
+    colour_group = paste0(treatment, "_", temp)
+  ) %>% 
+    glimpse
+
+# model fitting - first order kinetics (ln-transformed)
+lm_controls_raw <- trace_gas_oxidation_clean %>%
+  mutate(ln_nmol_l = log(nmol_l)) %>% # for the first order
+  group_by(group) %>%
+  group_modify(~ {
+    m <- lm(ln_nmol_l ~ time, data = .x)
+    bind_cols(
+      broom::tidy(m) %>%
+        filter(term == "time") %>%
+        select(
+          slope = estimate,
+          std_error = std.error,
+          t_stat = statistic,
+          p_value = p.value
+        ),
+      broom::glance(m) %>%
+        select(r_squared = r.squared)
+    )
+  }) %>%
+  ungroup() %>%
+  arrange(group) %>% 
+  print
+
+group_levels <- sort(unique(trace_gas_oxidation_controls$group)) %>% 
+  print
+
+#write_tsv(distinct(trace_gas_oxidation_controls, group), "distinct_group_controls.tsv")
+
+group_levels <- c(
+  "1_Heat-Killed_13_CO", "1_Blank_19_CO", "1_Heat-Killed_19_CO",
+  "1_Heat-Killed_13_H2", "1_Blank_19_H2", "1_Heat-Killed_19_H2",
+  "1_Heat-Killed_13_CH4", "1_Blank_19_CH4", "1_Heat-Killed_19_CH4",
+  "2_Heat-Killed_13_CO", "2_Blank_19_CO", "2_Heat-Killed_19_CO",
+  "2_Heat-Killed_13_H2", "2_Blank_19_H2", "2_Heat-Killed_19_H2",
+  "2_Heat-Killed_13_CH4", "2_Blank_19_CH4", "2_Heat-Killed_19_CH4"
+)
+
+# stripped group_col labels (take from replicate 1 entries, remove "1_" prefix)
+group_labels_col_control <- unique(str_remove(group_levels, "^\\d_")) %>%
+  setNames(., .) %>%
+  str_replace("^.*_(H2|CO|CH4)$", "\\1") %>%       # keep only gas name
+  str_replace("H2",  "H₂") %>%
+  str_replace("CH4", "CH₄") %>%
+  { setNames(., unique(str_remove(group_levels, "^\\d_"))) }
+
+palette_control <- c(
+  "Heat-Killed_13" = "#B8E6D6",  # lighter teal-green echoes unwarmed_13
+  "Blank_19"       = "#999999",   
+  "Heat-Killed_19" = "#FDCAB0"  # lighter orange echoes warmed_19
+)
+
+# plot data
+plot_data_control <- trace_gas_oxidation_clean %>%
+  mutate(
+    ln_nmol_l = log(nmol_l),
+    rep_row = case_when(
+      replicate == 1 ~ "Replicate 1",
+      replicate == 2 ~ "Replicate 2"
+    ),
+    rep_row   = factor(rep_row, levels = c("Replicate 1", "Replicate 2")),
+    group     = factor(group, levels = group_levels),
+    group_col = str_remove(group, "^\\d_"),
+    group_col = factor(group_col, levels = unique(str_remove(group_levels, "^\\d_")))
+  ) %>%
+  filter(!is.na(ln_nmol_l), !is.na(rep_row))
+
+model_data_controls <- lm_controls_raw %>%
+  select(group, slope, r2 = r_squared) %>%
+  mutate(
+    rep_row = case_when(
+      str_starts(as.character(group), "1") ~ "Replicate 1",
+      str_starts(as.character(group), "2") ~ "Replicate 2"
+    ),
+    rep_row   = factor(rep_row, levels = c("Replicate 1", "Replicate 2")),
+    group_col = str_remove(as.character(group), "^\\d_"),
+    group_col = factor(group_col, levels = levels(plot_data_control$group_col))
+  ) %>%
+  filter(!is.na(rep_row))
+
+
+# plot
+gg_plot_all_control <- plot_data_control %>%
+  ggplot(aes(x = time, y = ln_nmol_l, colour = colour_group, shape = colour_group)) +
+  geom_point(alpha = 0.8, size = 4) +
+  geom_smooth(
+    method    = "lm",
+    se        = FALSE,
+    colour    = "grey50",
+    linewidth = 0.8,
+    linetype  = "dashed"
+  ) +
+  geom_text(
+     data = model_data_controls,
+  aes(x = Inf, y = -Inf,
+      label = sprintf("slope = %.3f\nR² = %.3f", slope, r2)),
+  hjust = 1.05, vjust = -0.3, size = 3.5, colour = "black",
+  inherit.aes = FALSE
+  ) +
+  scale_colour_manual(
+    values = palette_control,
+    name   = "",
+    breaks = names(palette_control),
+    labels = c(
+      "Heat-Killed_13" = "Unwarmed (heat-killed)",
+      "Blank_19"       = "Long-term warmed (Blank)",
+      "Heat-Killed_19" = "Long-term warmed (heat-killed)"
+    )
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Heat-Killed_13" = 16,   # circle
+      "Blank_19"       = 17,    # triangle
+      "Heat-Killed_19" = 16   # circle
+    ),
+    name   = "",
+    breaks = names(palette_control),
+    labels = c(
+      "Heat-Killed_13" = "Unwarmed (heat-killed)",
+      "Blank_19"       = "Long-term warmed (Blank)",
+      "Heat-Killed_19" = "Long-term warmed (heat-killed)"
+      
+    )
+  ) +
+  ggh4x::facet_grid2(
+    rep_row ~ group_col,
+    scales   = "free_x",
+    labeller = labeller(
+      group_col = as_labeller(group_labels_col_control),
+      rep_row   = label_value
+    )
+  ) +
+  coord_cartesian(ylim = c(3.5, 7)) +
+  facetted_pos_scales(
+    x = list(
+      group_col %in% grep("_CO$",  levels(plot_data_control$group_col), value = TRUE) ~ scale_x_continuous(limits = c(0, 50)),
+      group_col %in% grep("_H2$",  levels(plot_data_control$group_col), value = TRUE) ~ scale_x_continuous(limits = c(0, 50)),
+      group_col %in% grep("_CH4$", levels(plot_data_control$group_col), value = TRUE) ~ scale_x_continuous(limits = c(0, 500))
+    )
+  ) +
+  labs(
+    x = "Time [h]",
+    y = "Gas concentration [ln(nmol L⁻¹)]"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(strip.text = element_text(face = "bold", colour = "darkslategray", size = 13),
+    panel.spacing.x = unit(15, "pt"),  # horizontal spacing between facets
+    axis.text         = element_text(size = 14),
+    axis.title        = element_text(size = 16),
+    axis.ticks        = element_line(colour = "grey40", linewidth = 0.1),
+    axis.ticks.length = unit(4, "pt"),
+    panel.grid.major  = element_line(colour = "grey96", linewidth = 0.25),
+    panel.grid.minor  = element_blank(),
+    axis.line         = element_line(colour = "black", linewidth = 0.5),
+    legend.position   = "bottom",
+    legend.text       = element_text(size = 16)
+  )
+
+gg_plot_all_control
+
+
+```

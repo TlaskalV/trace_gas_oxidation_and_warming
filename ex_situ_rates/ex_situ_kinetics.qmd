@@ -15,7 +15,7 @@ library(tidylog)
 library(readr)
 
 # read modified input and keep rows for kinetics
-trace_gas_oxidation <- read_tsv("ex_situ_oxidation_data.tsv")
+trace_gas_oxidation <- read_tsv("ex_situ_oxidation_rates.tsv")
 
 # show groups
 groups <- distinct(trace_gas_oxidation, group) %>% 

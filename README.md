@@ -47,6 +47,8 @@ Robinson, D., and Hayes, A. (2023). broom: Convert Statistical Objects into Tidy
 
 Sigurdsson, B. D., Leblans, N. I. W., Dauwe, S., Guðmundsdóttir, E., Gundersen, P., Gunnarsdóttir, G. E., et al. (2016). Geothermal ecosystems as natural climate change experiments: The ForHot research site in Iceland as a case study. IAS 29, 53–71. doi: 10.16886/IAS.2016.05
 
+van den Brand, Teun. 2025. ggh4x: Hacks for “ggplot2.” manual. doi:10.32614/CRAN.package.ggh4x.
+
 Wickham, H., Averick, M., Bryan, J., Chang, W., Mcgowan, L. D. A., François, R., et al. (2019). Welcome to the Tidyverse. The Journal of Open Source Software 4, 1686. doi: 10.21105/joss.01686
 
 Wickham, H., and Bryan, J. (2023). readxl: Read excel files.
